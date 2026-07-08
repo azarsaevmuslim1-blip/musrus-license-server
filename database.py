@@ -21,7 +21,9 @@ def init_db():
             hwid TEXT,
             activated_at TEXT,
             expires_at TEXT,
+            duration_days INTEGER,
             is_active INTEGER NOT NULL DEFAULT 1,
+            is_suspended INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS admins (
@@ -30,6 +32,15 @@ def init_db():
             password_hash TEXT NOT NULL
         );
     """)
+    # Migration for existing databases
+    try:
+        conn.execute("ALTER TABLE licenses ADD COLUMN is_suspended INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE licenses ADD COLUMN duration_days INTEGER")
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 
@@ -42,8 +53,8 @@ def create_license_key(days: int | None = None) -> dict:
 
     conn = get_db()
     conn.execute(
-        "INSERT INTO licenses (license_key, created_at, expires_at) VALUES (?, ?, ?)",
-        (key, now, expires),
+        "INSERT INTO licenses (license_key, created_at, expires_at, duration_days) VALUES (?, ?, ?, ?)",
+        (key, now, expires, days),
     )
     conn.commit()
     # read back
@@ -67,6 +78,9 @@ def activate_license(license_key: str, hwid: str) -> dict:
     if not lic["is_active"]:
         return {"success": False, "error": "revoked", "message": "Ключ отозван"}
 
+    if lic["is_suspended"]:
+        return {"success": False, "error": "suspended", "message": "Ключ приостановлен. Обратитесь к разработчику."}
+
     if lic["expires_at"]:
         expires = datetime.fromisoformat(lic["expires_at"])
         if expires < datetime.now(timezone.utc):
@@ -82,10 +96,19 @@ def activate_license(license_key: str, hwid: str) -> dict:
 
     now = datetime.now(timezone.utc).isoformat()
     conn = get_db()
-    conn.execute(
-        "UPDATE licenses SET hwid = ?, activated_at = COALESCE(activated_at, ?) WHERE license_key = ?",
-        (hwid, now, license_key),
-    )
+
+    # Если активация первая — пересчитываем expires_at от даты активации
+    if not lic["activated_at"] and lic["duration_days"]:
+        expires = (datetime.now(timezone.utc) + timedelta(days=lic["duration_days"])).isoformat()
+        conn.execute(
+            "UPDATE licenses SET hwid = ?, activated_at = ?, expires_at = ? WHERE license_key = ?",
+            (hwid, now, expires, license_key),
+        )
+    else:
+        conn.execute(
+            "UPDATE licenses SET hwid = ?, activated_at = COALESCE(activated_at, ?) WHERE license_key = ?",
+            (hwid, now, license_key),
+        )
     conn.commit()
     conn.close()
 
@@ -101,6 +124,9 @@ def verify_license(license_key: str, hwid: str) -> dict:
 
     if not lic["is_active"]:
         return {"valid": False, "error": "revoked", "message": "Ключ отозван"}
+
+    if lic["is_suspended"]:
+        return {"valid": False, "error": "suspended", "message": "Ключ приостановлен. Обратитесь к разработчику."}
 
     if lic["expires_at"]:
         expires = datetime.fromisoformat(lic["expires_at"])
@@ -142,6 +168,28 @@ def revoke_license(license_key: str) -> dict:
     conn.commit()
     conn.close()
     return {"success": True, "message": "Ключ отозван"}
+
+
+def suspend_license(license_key: str) -> dict:
+    lic = get_license(license_key)
+    if not lic:
+        return {"success": False, "error": "not_found", "message": "Ключ не найден"}
+    conn = get_db()
+    conn.execute("UPDATE licenses SET is_suspended = 1 WHERE license_key = ?", (license_key,))
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": "Ключ приостановлен"}
+
+
+def resume_license(license_key: str) -> dict:
+    lic = get_license(license_key)
+    if not lic:
+        return {"success": False, "error": "not_found", "message": "Ключ не найден"}
+    conn = get_db()
+    conn.execute("UPDATE licenses SET is_suspended = 0 WHERE license_key = ?", (license_key,))
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": "Ключ возобновлён"}
 
 
 def get_all_licenses() -> list[dict]:
