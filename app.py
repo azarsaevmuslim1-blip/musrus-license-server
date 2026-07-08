@@ -9,8 +9,8 @@ from config import ADMIN_KEY, ADMIN_PASSWORD, SECRET_KEY
 from database import (
     init_db, create_license_key, get_license,
     activate_license, verify_license, reset_hwid,
-    revoke_license, get_all_licenses,
-    delete_license, clear_all_licenses,
+    revoke_license, suspend_license, resume_license,
+    get_all_licenses, delete_license, clear_all_licenses,
 )
 
 app = Flask(__name__)
@@ -91,6 +91,30 @@ def api_admin_revoke():
     if not license_key:
         return jsonify({"success": False, "error": "bad_request", "message": "license_key обязателен"}), 400
     result = revoke_license(license_key)
+    status = 200 if result["success"] else 400
+    return jsonify(result), status
+
+
+@app.route("/api/admin/suspend", methods=["POST"])
+@require_admin_key
+def api_admin_suspend():
+    data = request.get_json(force=True)
+    license_key = (data.get("license_key") or "").strip().upper()
+    if not license_key:
+        return jsonify({"success": False, "error": "bad_request", "message": "license_key обязателен"}), 400
+    result = suspend_license(license_key)
+    status = 200 if result["success"] else 400
+    return jsonify(result), status
+
+
+@app.route("/api/admin/resume", methods=["POST"])
+@require_admin_key
+def api_admin_resume():
+    data = request.get_json(force=True)
+    license_key = (data.get("license_key") or "").strip().upper()
+    if not license_key:
+        return jsonify({"success": False, "error": "bad_request", "message": "license_key обязателен"}), 400
+    result = resume_license(license_key)
     status = 200 if result["success"] else 400
     return jsonify(result), status
 
@@ -244,10 +268,10 @@ ADMIN_PANEL_PAGE = """<!DOCTYPE html>
             <thead>
               <tr>
                 <th>#</th>
-                <th>License Key</th>
+                <th>Ключ</th>
                 <th>HWID</th>
                 <th>Статус</th>
-                <th>Активирован</th>
+                <th>Активация</th>
                 <th>Истекает</th>
                 <th>Действия</th>
               </tr>
@@ -296,10 +320,15 @@ ADMIN_PANEL_PAGE = """<!DOCTYPE html>
       data.keys.forEach((k, i) => {
         const hwid = k.hwid || '<span class="text-secondary">—</span>';
         const hwidShort = k.hwid ? k.hwid.substring(0, 16) + '...' : '—';
-        const status = k.is_active ? '<span class="text-success"><i class="bi bi-check-circle"></i> Active</span>'
-                                    : '<span class="text-danger"><i class="bi bi-x-circle"></i> Revoked</span>';
+        const now = Date.now();
+        const isExpired = k.expires_at && new Date(k.expires_at).getTime() < now;
+        const status = !k.is_active ? '<span class="text-danger"><i class="bi bi-x-circle"></i> Отозван</span>'
+                      : k.is_suspended ? '<span class="text-warning"><i class="bi bi-pause-circle"></i> Остановлен</span>'
+                      : isExpired ? '<span class="text-danger"><i class="bi bi-clock"></i> Истёк</span>'
+                      : k.hwid ? '<span class="text-success"><i class="bi bi-check-circle"></i> Активен</span>'
+                      : '<span class="text-secondary"><i class="bi bi-hourglass"></i> Не активирован</span>';
         const activated = k.activated_at ? new Date(k.activated_at).toLocaleString('ru-RU') : '<span class="text-secondary">—</span>';
-        const expires = k.expires_at ? new Date(k.expires_at).toLocaleString('ru-RU') : '<span class="text-secondary">∞</span>';
+        const expires = k.expires_at ? new Date(k.expires_at).toLocaleString('ru-RU') : '<span class="text-secondary">Не активирован</span>';
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${i+1}</td>
@@ -312,11 +341,14 @@ ADMIN_PANEL_PAGE = """<!DOCTYPE html>
             <button class="btn btn-warning btn-sm btn-hwid" onclick="resetHwid('${k.license_key}')" title="Сбросить HWID">
               <i class="bi bi-arrow-counterclockwise"></i> HWID
             </button>
-            ${k.is_active ? `<button class="btn btn-danger btn-sm btn-hwid" onclick="revokeKey('${k.license_key}')" title="Отозвать">
-              <i class="bi bi-x-lg"></i>
+            ${!k.is_suspended && k.is_active && !isExpired ? `<button class="btn btn-warning btn-sm btn-hwid" onclick="suspendKey('${k.license_key}')" title="Остановить">
+              <i class="bi bi-pause-fill"></i> Остановить
+            </button>` : ''}
+            ${k.is_suspended && k.is_active && !isExpired ? `<button class="btn btn-success btn-sm btn-hwid" onclick="resumeKey('${k.license_key}')" title="Возобновить">
+              <i class="bi bi-play-fill"></i> Возобновить
             </button>` : ''}
             <button class="btn btn-outline-danger btn-sm btn-hwid" onclick="deleteKey('${k.license_key}')" title="Удалить навсегда">
-              <i class="bi bi-trash"></i>
+              <i class="bi bi-trash"></i> Удалить
             </button>
           </td>
         `;
@@ -327,6 +359,20 @@ ADMIN_PANEL_PAGE = """<!DOCTYPE html>
     async function resetHwid(key) {
       if (!confirm('Сбросить HWID для ' + key + '?')) return;
       const data = await api('POST', '/api/admin/reset', { license_key: key });
+      showToast(data.message, data.success);
+      if (data.success) loadKeys();
+    }
+
+    async function suspendKey(key) {
+      if (!confirm('Приостановить ключ ' + key + '?')) return;
+      const data = await api('POST', '/api/admin/suspend', { license_key: key });
+      showToast(data.message, data.success);
+      if (data.success) loadKeys();
+    }
+
+    async function resumeKey(key) {
+      if (!confirm('Возобновить ключ ' + key + '?')) return;
+      const data = await api('POST', '/api/admin/resume', { license_key: key });
       showToast(data.message, data.success);
       if (data.success) loadKeys();
     }
@@ -406,6 +452,8 @@ def index():
             "POST /api/activate",
             "POST /api/verify",
             "POST /api/admin/reset",
+            "POST /api/admin/suspend",
+            "POST /api/admin/resume",
             "POST /api/admin/revoke",
             "POST /api/admin/create",
             "POST /api/admin/delete",
