@@ -1,5 +1,6 @@
 import functools
 import html as html_mod
+import os
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request, session, redirect, url_for, render_template_string
@@ -17,8 +18,16 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 CORS(app)
 
+import logging
+logging.basicConfig(level=logging.INFO)
+
+print(f"[APP] DATABASE_URL: {os.environ.get('DATABASE_URL', 'NOT SET')[:50]}")
+print(f"[Startup] DATABASE_URL set: {bool(os.environ.get('DATABASE_URL', '').strip())}")
+
 with app.app_context():
     init_db()
+
+print(f"[APP] DATABASE_URL: {os.environ.get('DATABASE_URL', 'NOT SET')[:50]}")
 
 
 def require_admin_key(f):
@@ -462,9 +471,3 @@ def index():
             "GET /admin",
         ]
     })
-
-
-if __name__ == "__main__":
-    init_db()
-    print("Server starting on http://0.0.0.0:5000")
-    app.run(host="0.0.0.0", port=5000, debug=True)
