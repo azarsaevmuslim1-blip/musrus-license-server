@@ -452,6 +452,14 @@ def admin_logout():
     return redirect(url_for("admin_login"))
 
 
+@app.route("/api/version")
+def api_version():
+    return jsonify({
+        "latest_version": "1.0.4",
+        "download_url": "https://github.com/azarsaevmuslim1-blip/musrus-visuals-dist/releases/download/v1.0.4/MusrusVisuals.pro.exe",
+    })
+
+
 @app.route("/")
 def index():
     return jsonify({
@@ -460,6 +468,7 @@ def index():
         "endpoints": [
             "POST /api/activate",
             "POST /api/verify",
+            "GET  /api/version",
             "POST /api/admin/reset",
             "POST /api/admin/suspend",
             "POST /api/admin/resume",
