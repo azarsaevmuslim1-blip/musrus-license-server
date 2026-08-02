@@ -456,7 +456,7 @@ def admin_logout():
 def api_version():
     return jsonify({
         "latest_version": "1.0.12",
-        "download_url": "https://github.com/azarsaevmuslim1-blip/musrus-visuals-dist/releases/download/v1.0.11/MusrusVisuals.pro.exe",
+        "download_url": "https://github.com/azarsaevmuslim1-blip/musrus-visuals-dist/releases/download/v1.0.12/MusrusVisuals.pro.exe",
     })
 
 
