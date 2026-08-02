@@ -455,7 +455,7 @@ def admin_logout():
 @app.route("/api/version")
 def api_version():
     return jsonify({
-        "latest_version": "1.0.11",
+        "latest_version": "1.0.12",
         "download_url": "https://github.com/azarsaevmuslim1-blip/musrus-visuals-dist/releases/download/v1.0.11/MusrusVisuals.pro.exe",
     })
 
