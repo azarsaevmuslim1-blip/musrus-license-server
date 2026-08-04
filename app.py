@@ -460,6 +460,35 @@ def api_version():
     })
 
 
+@app.route("/download")
+def download():
+    info = {
+        "latest_version": "1.0.26",
+        "download_url": "https://github.com/azarsaevmuslim1-blip/musrus-visuals-dist/releases/download/v1.0.26/MusrusVisuals.pro.exe",
+    }
+    page = f"""
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="refresh" content="1;url={info['download_url']}">
+        <title>MusRus Visuals PRO — Скачать</title>
+        <style>
+            body {{ background:#0a0a0a; color:#fff; font-family:Segoe UI,sans-serif; text-align:center; padding-top:12vh; }}
+            h1 {{ color:#28a745; }}
+            a {{ color:#ffc107; font-size:20px; }}
+        </style>
+    </head>
+    <body>
+        <h1>MusRus Visuals PRO</h1>
+        <p>Последняя версия лаунчера: <b>v{info['latest_version']}</b></p>
+        <p>Загрузка началась. Если не началась — <a href="{info['download_url']}">нажми сюда</a>.</p>
+    </body>
+    </html>
+    """
+    return page
+
+
 @app.route("/")
 def index():
     return jsonify({
@@ -469,6 +498,7 @@ def index():
             "POST /api/activate",
             "POST /api/verify",
             "GET  /api/version",
+            "GET  /download",
             "POST /api/admin/reset",
             "POST /api/admin/suspend",
             "POST /api/admin/resume",
