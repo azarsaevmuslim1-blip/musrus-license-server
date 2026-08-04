@@ -1,0 +1,14 @@
+name: keepalive
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping license server to keep Render instance awake
+        run: |
+          curl -sS -m 30 -o /dev/null -w "status=%{http_code}\n" https://musrus-license-server.onrender.com/api/version || true
